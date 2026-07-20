@@ -18,17 +18,21 @@ import {
   type Node,
   type NodeChange,
   type OnSelectionChangeParams,
+  reconnectEdge,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { toPng } from "html-to-image";
 import { toast } from "sonner";
-import { ChevronRight, Download, GitFork, Home, Lock, Globe } from "lucide-react";
+import { ChevronRight, Download, FileCode, GitFork, Home, Lock, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CompositeNode, type CompositeNodeData } from "@/components/diagram/composite-node";
+import { MermaidPanel } from "@/components/diagram/mermaid-panel";
 import { PropertiesPanel } from "@/components/diagram/properties-panel";
 import { FolderPicker } from "@/components/library/folder-picker";
 import {
+  DECISION_KINDS,
+  DEFAULT_NODE_SHAPE,
   EDGE_STYLES,
   NODE_COLORS,
   type DiagramDocument,
@@ -224,6 +228,7 @@ function DiagramCanvasInner({ diagramId }: DiagramCanvasInnerProps): React.JSX.E
   const [folderId, setFolderId] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
   const [forking, setForking] = useState(false);
+  const [showMermaid, setShowMermaid] = useState(false);
   const [scopeStack, setScopeStack] = useState<{ id: string; label: string }[]>([]);
   const [selectedNode, setSelectedNode] = useState<DiagramNodeData | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<DiagramEdgeData | null>(null);
@@ -286,6 +291,8 @@ function DiagramCanvasInner({ diagramId }: DiagramCanvasInnerProps): React.JSX.E
     onToggleExpandRef.current = (id: string): void => {
       const target = diagramRef.current.nodes.find((n) => n.id === id);
       if (!target) return;
+      const hasChildren = diagramRef.current.nodes.some((n) => n.parentId === id);
+      if (!hasChildren) return;
       const willExpand = !target.expanded;
       let nextNodes = diagramRef.current.nodes.map((n) =>
         n.id === id ? { ...n, expanded: willExpand } : n,
@@ -496,14 +503,38 @@ function DiagramCanvasInner({ diagramId }: DiagramCanvasInnerProps): React.JSX.E
     (connection: Connection) => {
       if (readOnlyRef.current || !connection.source || !connection.target) return;
       const id = `e-${connection.source}-${connection.target}-${Date.now()}`;
+      const sourceNode = diagramRef.current.nodes.find((n) => n.id === connection.source);
+      const isDecision = sourceNode && DECISION_KINDS.includes(sourceNode.kind);
+      let label: string | undefined;
+      if (isDecision) {
+        const existingFromSource = diagramRef.current.edges.filter((e) => e.source === connection.source);
+        label = existingFromSource.length === 0 ? "Yes" : existingFromSource.length === 1 ? "No" : undefined;
+      }
       const newEdge: DiagramEdgeData = {
         id,
         source: connection.source,
         target: connection.target,
-        kind: "lan",
+        kind: "routes-to",
+        label,
       };
       diagramRef.current = { ...diagramRef.current, edges: [...diagramRef.current.edges, newEdge] };
       setEdges((eds) => [...eds, diagramEdgeToFlowEdge(newEdge)]);
+    },
+    [setEdges],
+  );
+
+  const onReconnect = useCallback(
+    (oldEdge: Edge, newConnection: Connection) => {
+      if (readOnlyRef.current) return;
+      const source = newConnection.source ?? oldEdge.source;
+      const target = newConnection.target ?? oldEdge.target;
+      diagramRef.current = {
+        ...diagramRef.current,
+        edges: diagramRef.current.edges.map((e) =>
+          e.id === oldEdge.id ? { ...e, source, target } : e,
+        ),
+      };
+      setEdges((eds) => reconnectEdge(oldEdge, newConnection, eds));
     },
     [setEdges],
   );
@@ -648,7 +679,7 @@ function DiagramCanvasInner({ diagramId }: DiagramCanvasInnerProps): React.JSX.E
         parentId: scopeIdRef.current,
         expanded: false,
         position: { x: 80, y: 80 },
-        shape: "rounded",
+        shape: DEFAULT_NODE_SHAPE[kind] ?? "rounded",
         borderStyle: "solid",
       };
       diagramRef.current = { ...diagramRef.current, nodes: [...diagramRef.current.nodes, newNode] };
@@ -810,7 +841,10 @@ function DiagramCanvasInner({ diagramId }: DiagramCanvasInnerProps): React.JSX.E
           </div>
           <div className="pointer-events-auto flex items-center gap-2">
             <Button size="sm" variant="outline" onClick={() => void handleExportPng()}>
-              <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Export PNG</span>
+              <Download className="h-3.5 w-3.5" /> <span className="hidden sm:inline">PNG</span>
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowMermaid((v) => !v)}>
+              <FileCode className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Mermaid</span>
             </Button>
             {isOwner ? (
               <Button size="sm" onClick={() => void handleSave()} disabled={saving}>
@@ -829,6 +863,8 @@ function DiagramCanvasInner({ diagramId }: DiagramCanvasInnerProps): React.JSX.E
           onNodesChange={handleNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onReconnect={onReconnect}
+          edgesReconnectable={!readOnly}
           onSelectionChange={onSelectionChange}
           nodeTypes={NODE_TYPES}
           nodesDraggable={!readOnly}
@@ -846,6 +882,13 @@ function DiagramCanvasInner({ diagramId }: DiagramCanvasInnerProps): React.JSX.E
           <Controls showInteractive={false} />
         </ReactFlow>
       </div>
+      {showMermaid ? (
+        <MermaidPanel
+          getDiagram={() => diagramRef.current}
+          diagramName={diagramName}
+          onClose={() => setShowMermaid(false)}
+        />
+      ) : null}
       <PropertiesPanel
         readOnly={readOnly}
         selectedNode={selectedNode}

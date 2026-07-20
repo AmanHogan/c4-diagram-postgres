@@ -2,7 +2,7 @@
 
 import { memo } from "react";
 import { Handle, NodeResizer, Position, type NodeProps } from "@xyflow/react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Maximize2 } from "lucide-react";
 import {
   NODE_COLORS,
   NODE_KIND_LABELS,
@@ -33,8 +33,6 @@ const BORDER_STYLE_CSS: Record<LineStyle, string> = {
   dotted: "dotted",
 };
 
-// Diamonds are clipped (not rotated) so they still work on non-square cards
-// without skewing the text inside.
 const SHAPE_STYLE: Record<NodeShape, React.CSSProperties> = {
   rectangle: { borderRadius: "0.25rem" },
   rounded: { borderRadius: "1rem" },
@@ -42,19 +40,13 @@ const SHAPE_STYLE: Record<NodeShape, React.CSSProperties> = {
   ellipse: { borderRadius: "50%" },
 };
 
-// Diamond/ellipse curvature eats into the corners, so their content is
-// centered (and padded more) instead of left-aligned like a normal card.
 const CENTERED_SHAPES: NodeShape[] = ["diamond", "ellipse"];
 
-// Dark base the accent color is tinted into for the box fill.
 const FILL_BASE: [number, number, number] = [30, 32, 32];
 
 /**
  * Blend a hex accent color into the dark base so each box reads as a deep,
  * desaturated tint of its category color rather than a flat grey.
- * @param hex Accent color, e.g. "#3b82f6".
- * @param ratio How much of the accent to mix in (0–1).
- * @returns An `rgb(...)` string safe for inline styles and PNG export.
  */
 function tintFill(hex: string, ratio: number): string {
   const h = hex.replace("#", "");
@@ -66,15 +58,6 @@ function tintFill(hex: string, ratio: number): string {
   return `rgb(${mix(r, FILL_BASE[0])}, ${mix(g, FILL_BASE[1])}, ${mix(b, FILL_BASE[2])})`;
 }
 
-/**
- * A diagram node rendered as a card. Collapsed: a compact labeled card.
- * Expanded: a bordered container sized from the node's `style`, with child
- * nodes positioned inside it by React Flow via `parentId`. Clicking the body
- * drills into the node's children as a new scope; the chevron instead
- * expands children inline within the current scope.
- * @param props React Flow node props, including this node's id and data.
- * @returns The rendered node.
- */
 function CompositeNodeImpl({ id, data, selected }: NodeProps): React.JSX.Element {
   const {
     label,
@@ -96,10 +79,8 @@ function CompositeNodeImpl({ id, data, selected }: NodeProps): React.JSX.Element
     <div
       className="group relative h-full w-full"
       onDoubleClick={(event) => {
-        if (hasChildren) {
-          event.stopPropagation();
-          onDrillIn(id);
-        }
+        event.stopPropagation();
+        onDrillIn(id);
       }}
     >
       <NodeResizer
@@ -135,18 +116,34 @@ function CompositeNodeImpl({ id, data, selected }: NodeProps): React.JSX.Element
             >
               {NODE_KIND_LABELS[kind]}
             </span>
-            {hasChildren && !centered ? (
-              <button
-                type="button"
-                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full hover:bg-muted"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onToggleExpand(id);
-                }}
-              >
-                {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-              </button>
-            ) : null}
+            <div className="flex items-center gap-0.5">
+              {hasChildren && !centered ? (
+                <>
+                  <button
+                    type="button"
+                    title={expanded ? "Collapse" : "Expand children inline"}
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full hover:bg-muted"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleExpand(id);
+                    }}
+                  >
+                    {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                  </button>
+                  <button
+                    type="button"
+                    title="Drill into this node"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full hover:bg-muted"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onDrillIn(id);
+                    }}
+                  >
+                    <Maximize2 className="h-3 w-3" />
+                  </button>
+                </>
+              ) : null}
+            </div>
           </div>
           <span className="line-clamp-2 break-words text-sm font-semibold leading-tight" title={label}>
             {label}
@@ -157,28 +154,52 @@ function CompositeNodeImpl({ id, data, selected }: NodeProps): React.JSX.Element
             </p>
           ) : null}
           {hasChildren && centered ? (
-            <button
-              type="button"
-              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full hover:bg-muted"
-              onClick={(event) => {
-                event.stopPropagation();
-                onToggleExpand(id);
-              }}
-            >
-              {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-            </button>
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                title={expanded ? "Collapse" : "Expand children inline"}
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full hover:bg-muted"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onToggleExpand(id);
+                }}
+              >
+                {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              </button>
+              <button
+                type="button"
+                title="Drill into this node"
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full hover:bg-muted"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDrillIn(id);
+                }}
+              >
+                <Maximize2 className="h-3 w-3" />
+              </button>
+            </div>
           ) : null}
         </div>
       </div>
 
       {HANDLE_POSITIONS.map((position) => (
         <Handle
-          key={position}
+          key={`src-${position}`}
           type="source"
           position={position}
           id={position}
-          className="!h-2.5 !w-2.5 opacity-0 transition-opacity group-hover:opacity-100"
-          style={{ backgroundColor: color }}
+          className="!h-3 !w-3 !border-2 !border-current opacity-0 transition-opacity group-hover:opacity-100"
+          style={{ backgroundColor: color, color: tintFill(color, 0.4) }}
+        />
+      ))}
+      {HANDLE_POSITIONS.map((position) => (
+        <Handle
+          key={`tgt-${position}`}
+          type="target"
+          position={position}
+          id={`${position}-target`}
+          className="!h-3 !w-3 !border-2 !border-current opacity-0 transition-opacity group-hover:opacity-100"
+          style={{ backgroundColor: color, color: tintFill(color, 0.4) }}
         />
       ))}
     </div>

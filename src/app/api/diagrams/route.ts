@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
-import { db, diagrams } from "@/lib/db";
+import { db, diagrams, diagramNodes, diagramEdges } from "@/lib/db";
 import { requireUserId } from "@/lib/require-user";
+import { flowchartTemplate } from "@/lib/diagram-types";
 
 /**
  * List the current user's diagrams, most recently opened first.
@@ -36,10 +37,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { name, visibility, folderId } = (await request.json()) as {
+  const { name, visibility, folderId, template } = (await request.json()) as {
     name?: string;
     visibility?: "public" | "private";
     folderId?: string | null;
+    template?: "flowchart";
   };
   if (!name || !name.trim()) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -63,6 +65,37 @@ export async function POST(request: Request): Promise<NextResponse> {
       folderId: folderId ?? null,
     })
     .returning({ id: diagrams.id });
+
+  if (template === "flowchart") {
+    const seed = flowchartTemplate();
+    await db.insert(diagramNodes).values(
+      seed.nodes.map((n, i) => ({
+        diagramId: diagram.id,
+        nodeId: n.id,
+        kind: n.kind,
+        label: n.label,
+        parentId: n.parentId,
+        expanded: n.expanded,
+        positionX: n.position.x,
+        positionY: n.position.y,
+        sizeWidth: n.size?.width ?? null,
+        sizeHeight: n.size?.height ?? null,
+        shape: n.shape ?? null,
+        sortOrder: i,
+      })),
+    );
+    await db.insert(diagramEdges).values(
+      seed.edges.map((e, i) => ({
+        diagramId: diagram.id,
+        edgeId: e.id,
+        source: e.source,
+        target: e.target,
+        kind: e.kind,
+        label: e.label ?? null,
+        sortOrder: i,
+      })),
+    );
+  }
 
   return NextResponse.json({ id: diagram.id });
 }

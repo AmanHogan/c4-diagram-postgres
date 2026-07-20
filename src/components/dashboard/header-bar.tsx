@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   FolderClosed,
+  GitBranch,
   LayoutDashboard,
   Layers,
   LogOut,
@@ -14,7 +15,15 @@ import {
   UserRound,
 } from "lucide-react";
 import { signOut } from "next-auth/react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,13 +37,14 @@ interface HeaderBarProps {
   userName: string;
 }
 
-type CreateKind = "diagram" | "flashcard-set" | "folder";
+type CreateKind = "diagram" | "flowchart" | "flashcard-set" | "folder";
 
 const CREATE_OPTIONS: {
   kind: CreateKind;
   label: string;
   icon: typeof Network;
   createUrl: string;
+  template?: string;
   detailHref: (id: string) => string;
 }[] = [
   {
@@ -42,6 +52,14 @@ const CREATE_OPTIONS: {
     label: "Diagram",
     icon: Network,
     createUrl: "/api/diagrams",
+    detailHref: (id) => `/dashboard/diagram/${id}`,
+  },
+  {
+    kind: "flowchart",
+    label: "Flowchart",
+    icon: GitBranch,
+    createUrl: "/api/diagrams",
+    template: "flowchart",
     detailHref: (id) => `/dashboard/diagram/${id}`,
   },
   {
@@ -60,16 +78,13 @@ const CREATE_OPTIONS: {
   },
 ];
 
-/**
- * Persistent dashboard header: a centered search bar, a "+ new" dropdown
- * (diagram / flashcard set / folder), and an avatar menu (public profile,
- * settings, sign out).
- * @param props The signed-in user's id and display name.
- * @returns The rendered header bar.
- */
 export function HeaderBar({ userId, userName }: HeaderBarProps): React.JSX.Element {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [pendingOption, setPendingOption] = useState<(typeof CREATE_OPTIONS)[number] | null>(null);
 
   const handleSearch = (e: React.FormEvent): void => {
     e.preventDefault();
@@ -78,17 +93,31 @@ export function HeaderBar({ userId, userName }: HeaderBarProps): React.JSX.Eleme
     }
   };
 
-  const handleCreate = async (option: (typeof CREATE_OPTIONS)[number]): Promise<void> => {
-    const name = window.prompt(`Name your new ${option.label.toLowerCase()}`);
-    if (!name || !name.trim()) return;
-    const res = await fetch(option.createUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim() }),
-    });
-    if (!res.ok) return;
-    const data = (await res.json()) as { id: string };
-    router.push(option.detailHref(data.id));
+  const openCreateDialog = (option: (typeof CREATE_OPTIONS)[number]): void => {
+    setPendingOption(option);
+    setCreateName("");
+    setDialogOpen(true);
+  };
+
+  const handleCreate = async (): Promise<void> => {
+    const option = pendingOption;
+    if (!option || !createName.trim()) return;
+    setCreating(true);
+    try {
+      const body: Record<string, string> = { name: createName.trim() };
+      if (option.template) body.template = option.template;
+      const res = await fetch(option.createUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as { id: string };
+      setDialogOpen(false);
+      router.push(option.detailHref(data.id));
+    } finally {
+      setCreating(false);
+    }
   };
 
   const initial = userName.charAt(0).toUpperCase() || "?";
@@ -129,7 +158,7 @@ export function HeaderBar({ userId, userName }: HeaderBarProps): React.JSX.Eleme
           {CREATE_OPTIONS.map((option) => (
             <DropdownMenuItem
               key={option.kind}
-              onClick={() => void handleCreate(option)}
+              onClick={() => openCreateDialog(option)}
               className="gap-3 py-2.5 text-base"
             >
               <option.icon className="h-4 w-4" />
@@ -138,6 +167,38 @@ export function HeaderBar({ userId, userName }: HeaderBarProps): React.JSX.Eleme
           ))}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              New {pendingOption?.label.toLowerCase() ?? "item"}
+            </DialogTitle>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleCreate();
+            }}
+          >
+            <Input
+              autoFocus
+              placeholder="Enter a name…"
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              className="mb-4"
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!createName.trim() || creating}>
+                {creating ? "Creating…" : "Create"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Trash2, Group, Ungroup, Plus, PanelRightClose, PanelRightOpen } from "lucide-react";
+import { Trash2, Group, Ungroup, Plus, PanelRightClose, PanelRightOpen, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +17,7 @@ import {
   EDGE_STYLES,
   NODE_COLORS,
   NODE_KIND_LABELS,
+  NODE_KIND_CATEGORIES,
   type ArrowStyle,
   type DiagramEdgeData,
   type DiagramNodeData,
@@ -52,13 +53,8 @@ interface FillColorPickerProps {
 }
 
 /**
- * Native color input that only commits (triggering the expensive diagram
- * rebuild) on the picker's `change` event — i.e. once, when the user closes
- * it — instead of on every drag movement inside the picker. React's onChange
- * fires continuously on the underlying `input` event, which was triggering a
- * full rebuild per pixel of drag and could stall/close the native picker.
- * @param props The current color and a commit callback.
- * @returns The rendered color input.
+ * Native color input that only commits on the picker's `change` event,
+ * not on every drag pixel.
  */
 function FillColorPicker({ value, onCommit }: FillColorPickerProps): React.JSX.Element {
   const ref = useRef<HTMLInputElement>(null);
@@ -90,6 +86,209 @@ function FillColorPicker({ value, onCommit }: FillColorPickerProps): React.JSX.E
   );
 }
 
+interface SearchableKindPickerProps {
+  onSelect: (kind: NodeKind) => void;
+  placeholder?: string;
+}
+
+/**
+ * Searchable dropdown for picking a node kind, grouped by category.
+ */
+function SearchableKindPicker({ onSelect, placeholder = "Search components..." }: SearchableKindPickerProps): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent): void => {
+      if (containerRef.current && !containerRef.current.contains(e.target as HTMLElement)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return (): void => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const lowerQuery = query.toLowerCase();
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        className="flex h-8 w-full items-center gap-1.5 rounded-md border border-input bg-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+        onClick={() => setOpen(!open)}
+      >
+        <Plus className="h-3.5 w-3.5" />
+        <span>Add component...</span>
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-50 mt-1 max-h-72 w-64 overflow-hidden rounded-lg border bg-popover shadow-lg">
+          <div className="flex items-center gap-2 border-b px-2 py-1.5">
+            <Search className="h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              ref={inputRef}
+              type="text"
+              className="h-6 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+              placeholder={placeholder}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto p-1">
+            {Object.entries(NODE_KIND_CATEGORIES).map(([category, kinds]) => {
+              const filtered = kinds.filter((k) =>
+                NODE_KIND_LABELS[k].toLowerCase().includes(lowerQuery),
+              );
+              if (filtered.length === 0) return null;
+              return (
+                <div key={category}>
+                  <p className="px-2 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {category}
+                  </p>
+                  {filtered.map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs hover:bg-accent"
+                      onClick={() => {
+                        onSelect(kind);
+                        setOpen(false);
+                        setQuery("");
+                      }}
+                    >
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: NODE_COLORS[kind] }}
+                      />
+                      {NODE_KIND_LABELS[kind]}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+            {NODE_KINDS.filter((k) => NODE_KIND_LABELS[k].toLowerCase().includes(lowerQuery)).length === 0 ? (
+              <p className="px-2 py-3 text-center text-xs text-muted-foreground">No matches</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+interface SearchableKindSelectProps {
+  value: NodeKind;
+  onChange: (kind: NodeKind) => void;
+  disabled?: boolean;
+}
+
+/**
+ * Searchable select for changing a node's kind in the properties panel.
+ */
+function SearchableKindSelect({ value, onChange, disabled }: SearchableKindSelectProps): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (e: MouseEvent): void => {
+      if (containerRef.current && !containerRef.current.contains(e.target as HTMLElement)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return (): void => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  const lowerQuery = query.toLowerCase();
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        className="flex h-8 w-full items-center gap-1.5 rounded-md border border-input bg-transparent px-2 text-xs disabled:opacity-50"
+        onClick={() => !disabled && setOpen(!open)}
+      >
+        <span
+          className="inline-block h-2.5 w-2.5 rounded-full"
+          style={{ backgroundColor: NODE_COLORS[value] }}
+        />
+        {NODE_KIND_LABELS[value]}
+      </button>
+      {open ? (
+        <div className="absolute left-0 top-full z-50 mt-1 max-h-72 w-64 overflow-hidden rounded-lg border bg-popover shadow-lg">
+          <div className="flex items-center gap-2 border-b px-2 py-1.5">
+            <Search className="h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              ref={inputRef}
+              type="text"
+              className="h-6 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground"
+              placeholder="Search kinds..."
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
+          <div className="max-h-56 overflow-y-auto p-1">
+            {Object.entries(NODE_KIND_CATEGORIES).map(([category, kinds]) => {
+              const filtered = kinds.filter((k) =>
+                NODE_KIND_LABELS[k].toLowerCase().includes(lowerQuery),
+              );
+              if (filtered.length === 0) return null;
+              return (
+                <div key={category}>
+                  <p className="px-2 pb-0.5 pt-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {category}
+                  </p>
+                  {filtered.map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-xs hover:bg-accent ${kind === value ? "bg-accent font-medium" : ""}`}
+                      onClick={() => {
+                        onChange(kind);
+                        setOpen(false);
+                        setQuery("");
+                      }}
+                    >
+                      <span
+                        className="inline-block h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: NODE_COLORS[kind] }}
+                      />
+                      {NODE_KIND_LABELS[kind]}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+            {NODE_KINDS.filter((k) => NODE_KIND_LABELS[k].toLowerCase().includes(lowerQuery)).length === 0 ? (
+              <p className="px-2 py-3 text-center text-xs text-muted-foreground">No matches</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 interface PropertiesPanelProps {
   readOnly?: boolean;
   selectedNode: DiagramNodeData | null;
@@ -107,8 +306,6 @@ interface PropertiesPanelProps {
 /**
  * Side panel for editing the selected node or edge's style and metadata, plus
  * grouping multi-selected nodes and adding new nodes to the current scope.
- * @param props Selection state and mutation callbacks from the canvas.
- * @returns The rendered panel.
  */
 export function PropertiesPanel({
   readOnly = false,
@@ -126,7 +323,6 @@ export function PropertiesPanel({
   const { width, onPointerDown } = useResizableWidth(288, 240, 480, "left");
   const [collapsed, setCollapsed] = useState(false);
 
-  // Start collapsed on narrow (mobile) viewports to maximize canvas room.
   useEffect(() => {
     if (window.innerWidth < 768) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -180,20 +376,7 @@ export function PropertiesPanel({
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             Add node
           </p>
-          <Select onValueChange={(value) => onAddNode(value as NodeKind)}>
-            <SelectTrigger size="sm">
-              <span className="flex items-center gap-1.5 text-muted-foreground">
-                <Plus className="h-3.5 w-3.5" /> <SelectValue placeholder="Choose a kind…" />
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {NODE_KINDS.map((kind) => (
-                <SelectItem key={kind} value={kind}>
-                  {NODE_KIND_LABELS[kind]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <SearchableKindPicker onSelect={onAddNode} />
         </div>
       )}
 
@@ -218,25 +401,14 @@ export function PropertiesPanel({
             />
           </label>
 
-          <label className="flex flex-col gap-1 text-xs">
-            Kind
-            <Select
+          <div className="flex flex-col gap-1 text-xs">
+            <span>Kind</span>
+            <SearchableKindSelect
               disabled={readOnly}
               value={selectedNode.kind}
-              onValueChange={(value) => onUpdateNode(selectedNode.id, { kind: value as NodeKind })}
-            >
-              <SelectTrigger size="sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {NODE_KINDS.map((kind) => (
-                  <SelectItem key={kind} value={kind}>
-                    {NODE_KIND_LABELS[kind]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </label>
+              onChange={(kind) => onUpdateNode(selectedNode.id, { kind })}
+            />
+          </div>
 
           <label className="flex flex-col gap-1 text-xs">
             Shape
@@ -405,7 +577,8 @@ export function PropertiesPanel({
       {!selectedNode && !selectedEdge ? (
         <p className="text-xs text-muted-foreground">
           Select a node or connection to edit its style. Shift-click to multi-select nodes for
-          grouping.
+          grouping. Double-click a node to expand/collapse it. Drag from the colored dots on a
+          node&apos;s edge to create a connection.
         </p>
       ) : null}
     </div>
