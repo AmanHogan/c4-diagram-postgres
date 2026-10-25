@@ -556,9 +556,29 @@ function DiagramCanvasInner({ diagramId }: DiagramCanvasInnerProps): React.JSX.E
         nodes: diagramRef.current.nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)),
       };
       setSelectedNode((prev) => (prev && prev.id === id ? { ...prev, ...patch } : prev));
-      rebuildFlow(diagramRef.current, scopeIdRef.current, onToggleExpand, onDrillIn);
+      const updated = diagramRef.current.nodes.find((n) => n.id === id);
+      if (updated) {
+        setNodes((nds) =>
+          nds.map((n) =>
+            n.id === id
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    label: updated.label,
+                    kind: updated.kind,
+                    description: updated.description,
+                    fillColor: updated.fillColor ?? NODE_COLORS[updated.kind],
+                    shape: updated.shape ?? "rounded",
+                    borderStyle: updated.borderStyle ?? "solid",
+                  },
+                }
+              : n,
+          ),
+        );
+      }
     },
-    [rebuildFlow, onToggleExpand, onDrillIn],
+    [setNodes],
   );
 
   const onUpdateEdge = useCallback(
@@ -569,9 +589,12 @@ function DiagramCanvasInner({ diagramId }: DiagramCanvasInnerProps): React.JSX.E
         edges: diagramRef.current.edges.map((e) => (e.id === id ? { ...e, ...patch } : e)),
       };
       setSelectedEdge((prev) => (prev && prev.id === id ? { ...prev, ...patch } : prev));
-      rebuildFlow(diagramRef.current, scopeIdRef.current, onToggleExpand, onDrillIn);
+      const updated = diagramRef.current.edges.find((e) => e.id === id);
+      if (updated) {
+        setEdges((eds) => eds.map((e) => (e.id === id ? diagramEdgeToFlowEdge(updated) : e)));
+      }
     },
-    [rebuildFlow, onToggleExpand, onDrillIn],
+    [setEdges],
   );
 
   const onDeleteNode = useCallback(
@@ -872,6 +895,9 @@ function DiagramCanvasInner({ diagramId }: DiagramCanvasInnerProps): React.JSX.E
           connectionMode={ConnectionMode.Loose}
           proOptions={proOptions}
           defaultEdgeOptions={{ type: "smoothstep" }}
+          deleteKeyCode={null}
+          selectionKeyCode="Shift"
+          multiSelectionKeyCode="Shift"
           colorMode="dark"
           style={{ backgroundColor: "var(--background)" }}
           minZoom={0.05}
